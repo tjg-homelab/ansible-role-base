@@ -1,0 +1,22 @@
+---
+- name: 'RedHat : Install the EPEL repository'
+  become: true
+  ansible.builtin.package:
+    name: epel-release
+    state: present
+  when: base_manage_epel | bool
+
+- name: 'RedHat : Update all packages to the latest version'
+  become: true
+  ansible.builtin.package:  # noqa package-latest - a full system upgrade requires latest
+    name: '*'
+    state: latest
+    skip_broken: true
+  when: base_update_packages | bool
+
+- name: 'RedHat : Install baseline utility packages'
+  become: true
+  ansible.builtin.package:
+    name: "{{ base_utility_packages_redhat }}"
+    state: present
+  when: base_install_utility_packages | bool

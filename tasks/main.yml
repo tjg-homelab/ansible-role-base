@@ -1,0 +1,8 @@
+---
+- name: Base settings for RedHat family systems
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] | lower == 'redhat'
+
+- name: Base settings for Debian family systems
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] | lower == 'debian'

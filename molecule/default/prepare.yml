@@ -1,0 +1,10 @@
+---
+- name: Prepare
+  hosts: all
+  become: true
+  tasks:
+    - name: Drop the Debian/Ubuntu reboot-required marker
+      ansible.builtin.copy:
+        dest: /var/run/reboot-required
+        content: "*** System restart required ***\n"
+        mode: '0644'

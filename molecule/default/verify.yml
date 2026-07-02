@@ -1,0 +1,31 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Gather package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Assert baseline utility packages are installed
+      ansible.builtin.assert:
+        that:
+          - "'git' in ansible_facts.packages"
+          - "'htop' in ansible_facts.packages"
+          - "'rsync' in ansible_facts.packages"
+          - "'vim' in ansible_facts.packages or 'vim-common' in ansible_facts.packages"
+        fail_msg: "Expected baseline utility packages were not installed"
+
+    # prepare.yml created /var/run/reboot-required and converge disabled the
+    # reboot action, so the marker must still be present.
+    - name: Stat reboot-required marker
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+        get_checksum: false
+      register: base_reboot_marker
+
+    - name: Assert reboot marker survived a converge with reboots disabled
+      ansible.builtin.assert:
+        that:
+          - base_reboot_marker.stat.exists
+        fail_msg: "The role rebooted (or removed the marker) despite base_reboot_if_required=false"

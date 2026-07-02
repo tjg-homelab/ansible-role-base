@@ -1,0 +1,11 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    # Reboots are disabled in the container; prepare.yml drops the
+    # reboot-required marker so verify can confirm the role honours the toggle
+    # instead of rebooting.
+    base_reboot_if_required: false
+  roles:
+    - role: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') | basename }}"

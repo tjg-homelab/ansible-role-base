@@ -1,0 +1,35 @@
+---
+- name: 'Debian : Update all packages to the latest version'
+  become: true
+  ansible.builtin.apt:
+    upgrade: dist
+    update_cache: true
+  when: base_update_packages | bool
+
+- name: 'Debian : Remove packages that are no longer required'
+  become: true
+  ansible.builtin.apt:
+    autoremove: true
+  when: base_update_packages | bool
+
+- name: 'Debian : Check whether a reboot is required'
+  become: true
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+    get_checksum: false
+  register: base_reboot_required_file
+
+- name: 'Debian : Reboot the server (if required)'
+  become: true
+  ansible.builtin.reboot:
+  when:
+    - base_reboot_required_file.stat.exists
+    - base_reboot_if_required | bool
+
+- name: 'Debian : Install baseline utility packages'
+  become: true
+  ansible.builtin.apt:
+    name: "{{ base_utility_packages_debian }}"
+    state: present
+    update_cache: true
+  when: base_install_utility_packages | bool

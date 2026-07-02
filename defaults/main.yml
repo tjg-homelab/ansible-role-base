@@ -1,0 +1,45 @@
+---
+# defaults file for base
+
+# Run a full package upgrade (Debian: `apt upgrade dist`; RedHat: `package '*'
+# latest`). Set false on hosts where upgrades must be scheduled/controlled
+# elsewhere.
+base_update_packages: true
+
+# Reboot automatically when the OS signals a pending reboot
+# (/var/run/reboot-required on Debian/Ubuntu). RedHat family has no equivalent
+# marker, so this only applies to Debian/Ubuntu. Set false where reboots must
+# be scheduled manually.
+base_reboot_if_required: true
+
+# Install a baseline set of utility packages.
+base_install_utility_packages: true
+
+# Baseline utilities for Debian/Ubuntu (all in the default repos).
+base_utility_packages_debian:
+  - wget
+  - rsync
+  - htop
+  - unzip
+  - screen
+  - git
+  - vim
+  - net-tools
+
+# Baseline utilities for RedHat/EL. Kept to base-repo packages so the role works
+# without EPEL. Add EPEL-only extras (htop, glances, …) via your inventory after
+# enabling base_manage_epel.
+base_utility_packages_redhat:
+  - wget
+  - rsync
+  - unzip
+  - screen
+  - git
+  - vim
+  - net-tools
+  - yum-utils
+
+# Install the EPEL repo on RedHat/EL (via the base-repo `epel-release` package).
+# Off by default to keep the role dependency-free; enable if your utility list
+# includes EPEL-only packages.
+base_manage_epel: false

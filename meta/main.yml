@@ -1,0 +1,29 @@
+---
+galaxy_info:
+  role_name: base
+  author: rnissen
+  description: >-
+    Baseline OS setup for Debian and RedHat family systems — full package
+    upgrade, reboot-if-required, and a configurable set of utility packages
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+    - name: EL
+      versions:
+        - "9"
+  galaxy_tags:
+    - base
+    - baseline
+    - packages
+    - updates
+    - bootstrap
+
+dependencies: []
