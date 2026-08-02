@@ -8,3 +8,42 @@
         dest: /var/run/reboot-required
         content: "*** System restart required ***\n"
         mode: '0644'
+
+    # ---- AN-45 reproduction --------------------------------------------------
+    # The real failure did not just print an error: it left tzdata in state iF
+    # and SEVEN packages stuck iU (unpacked, never configured) behind it. The
+    # role now heals that before upgrading, so the test has to actually create
+    # it. Unpacking a package without configuring it produces a genuine iU
+    # entry — the same state dpkg was left in on donkey — rather than a mock.
+    - name: Ensure tzdata is present so the timezone path is exercisable
+      ansible.builtin.apt:
+        name: tzdata
+        state: present
+        update_cache: true
+
+    # noqa: command-instead-of-module — ansible.builtin.apt cannot fetch a .deb
+    # without installing it, and installing is precisely what must NOT happen
+    # here: the point is to leave it unpacked and unconfigured.
+    - name: Fetch a small package to unpack without configuring
+      ansible.builtin.command: apt-get download tree  # noqa: command-instead-of-module
+      args:
+        chdir: /tmp
+      changed_when: true
+
+    - name: Leave that package unpacked-but-unconfigured (iU)
+      ansible.builtin.shell: dpkg --unpack /tmp/tree_*.deb
+      changed_when: true
+
+    - name: Confirm the broken state exists before the role runs
+      ansible.builtin.command: dpkg --audit
+      changed_when: false
+      register: base_prepare_audit
+
+    - name: Fail the test setup if the broken state was not created
+      ansible.builtin.assert:
+        that:
+          - base_prepare_audit.stdout | trim | length > 0
+        fail_msg: >-
+          prepare.yml did not manage to leave a package half-configured, so the
+          AN-45 repair path would not actually be exercised. Fix the setup
+          rather than letting this test pass vacuously.

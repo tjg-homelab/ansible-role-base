@@ -7,5 +7,8 @@
     # reboot-required marker so verify can confirm the role honours the toggle
     # instead of rebooting.
     base_reboot_if_required: false
+    # AN-45: exercise the timezone path. Empty is the role default (leave the
+    # host alone), so the configured branch would otherwise never be tested.
+    base_timezone: Etc/UTC
   roles:
     - role: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') | basename }}"

@@ -15,6 +15,39 @@ base_reboot_if_required: true
 # Install a baseline set of utility packages.
 base_install_utility_packages: true
 
+# System timezone, e.g. "Etc/UTC" or "America/New_York" (Debian/Ubuntu only).
+#
+# Empty = leave the host's timezone alone, which is the default because this
+# fleet is genuinely mixed: Etc/UTC on the VPS and docker hosts,
+# America/New_York on the Pis. A non-empty default would silently re-timezone
+# half of them on the next converge.
+#
+# Set it on FRESH hosts. tzdata's maintainer scripts consult /etc/timezone and
+# skip their debconf questions when it is authoritative, so this is what
+# guarantees the AN-45 preconfigure prompt never happens rather than merely
+# being suppressed.
+base_timezone: ""
+
+# Fail the play when dpkg reports packages left broken or half-configured after
+# the package run.
+#
+# Leave this ON. It exists because the AN-45 failure was silent: one package
+# failed to preconfigure, seven more were left unconfigured behind it, and the
+# converge carried on for another ~150 tasks reporting green onto a host whose
+# python3 was half-installed. Failing at the cause beats debugging the symptom.
+base_assert_package_db_sane: true
+
+# Environment applied to every package operation on Debian/Ubuntu.
+#
+# ansible.builtin.apt already exports both of these for the commands it runs
+# (APT_ENV_VARS in the module), so this is belt-and-braces for that path. It
+# earns its place by also covering dpkg hook CHILD processes — which is where
+# dpkg-preconfigure actually runs — and the plain `dpkg --configure -a` repair
+# task, which is not an apt-module call at all.
+base_apt_environment:
+  DEBIAN_FRONTEND: noninteractive
+  DEBIAN_PRIORITY: critical
+
 # Baseline utilities for Debian/Ubuntu (all in the default repos).
 base_utility_packages_debian:
   - wget
