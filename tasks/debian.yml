@@ -1,16 +1,112 @@
 ---
-- name: 'Debian : Update all packages to the latest version'
-  become: true
-  ansible.builtin.apt:
-    upgrade: dist
-    update_cache: true
-  when: base_update_packages | bool
+# AN-45. A from-scratch converge died on the very first task of the very first
+# play: tzdata failed to preconfigure (exit 10), taking the whole dist-upgrade
+# with it and leaving tzdata in state iF with seven packages stuck iU behind
+# it — python3 among them, on the host Ansible manages.
+#
+# ON THE CAUSE: the obvious answer is "DEBIAN_FRONTEND was not set", but that is
+# not the whole story. ansible.builtin.apt ALREADY exports
+# DEBIAN_FRONTEND=noninteractive and DEBIAN_PRIORITY=critical for the commands
+# it runs (APT_ENV_VARS / run_command_environ_update in the module source), so
+# the upgrade that failed was already non-interactive. The likelier trigger is a
+# provider image that arrives with tzdata's debconf state already inconsistent,
+# which no environment variable fixes.
+#
+# So this defends in depth rather than trusting one explanation:
+#   1. repair a half-configured dpkg database BEFORE upgrading — the documented
+#      manual recovery, done by the role instead of by hand
+#   2. optionally own the timezone, so tzdata has no question to ask at all
+#   3. set the env explicitly anyway — covers dpkg hook children and any
+#      non-apt-module package command added here later
+#   4. fail loudly afterwards rather than converging onto a broken package db
 
-- name: 'Debian : Remove packages that are no longer required'
+- name: 'Debian : Configure the system timezone'
+  # Opt-in (base_timezone defaults to ""). tzdata's maintainer scripts read
+  # /etc/timezone and skip their debconf questions when it is authoritative, so
+  # setting this is the only thing that guarantees the prompt never exists.
+  # Left unset by default deliberately: this fleet is mixed (Etc/UTC on the VPS
+  # and docker hosts, America/New_York on the Pis) and a default would silently
+  # re-timezone half of it.
+  when: base_timezone | length > 0
   become: true
-  ansible.builtin.apt:
-    autoremove: true
-  when: base_update_packages | bool
+  block:
+    - name: 'Debian : Link /etc/localtime to the configured zone'
+      ansible.builtin.file:
+        src: "/usr/share/zoneinfo/{{ base_timezone }}"
+        dest: /etc/localtime
+        state: link
+        force: true
+
+    - name: 'Debian : Write /etc/timezone'
+      ansible.builtin.copy:
+        content: "{{ base_timezone }}\n"
+        dest: /etc/timezone
+        owner: root
+        group: root
+        mode: "0644"
+
+- name: 'Debian : Audit the package database before upgrading'
+  become: true
+  ansible.builtin.command: dpkg --audit
+  changed_when: false
+  failed_when: false
+  # Read-only, and it MUST run under --check: the repair task's `when` reads
+  # this result, and a skipped command task leaves .stdout undefined, which
+  # would break every check-mode run of the whole fleet.
+  check_mode: false
+  register: base_dpkg_audit_before
+
+- name: 'Debian : Repair a half-configured package database'
+  # A fresh provider image can arrive mid-configure. Upgrading on top of that is
+  # what turned one failed package into eight on donkey, so heal first.
+  become: true
+  ansible.builtin.command: dpkg --configure -a
+  environment: "{{ base_apt_environment }}"
+  when: base_dpkg_audit_before.stdout | trim | length > 0
+  register: base_dpkg_repair
+  changed_when: base_dpkg_repair.rc == 0
+  failed_when: false
+
+- name: 'Debian : Upgrade installed packages'
+  become: true
+  environment: "{{ base_apt_environment }}"
+  block:
+    - name: 'Debian : Update all packages to the latest version'
+      ansible.builtin.apt:
+        upgrade: dist
+        update_cache: true
+      when: base_update_packages | bool
+
+    - name: 'Debian : Remove packages that are no longer required'
+      ansible.builtin.apt:
+        autoremove: true
+      when: base_update_packages | bool
+
+- name: 'Debian : Audit the package database after upgrading'
+  become: true
+  ansible.builtin.command: dpkg --audit
+  changed_when: false
+  failed_when: false
+  check_mode: false     # read-only; the assert below depends on it under --check
+  register: base_dpkg_audit_after
+
+- name: 'Debian : Assert the package database is sane'
+  # Deliberately AFTER the package work and BEFORE the reboot. Converging on
+  # (or rebooting) a host with half-configured packages hides the failure and
+  # moves the damage further from its cause — which is exactly what happened on
+  # donkey, where the run continued and the breakage was found much later.
+  ansible.builtin.assert:
+    that:
+      - base_dpkg_audit_after.stdout | trim | length == 0
+    fail_msg: >-
+      dpkg reports packages in a broken or half-configured state after the
+      package run. Do NOT continue converging onto this host. On the host:
+      `dpkg --audit` to see them, then
+      `DEBIAN_FRONTEND=noninteractive dpkg --configure -a`. If tzdata is the
+      one stuck, set `base_timezone` (e.g. Etc/UTC) and converge again.
+      dpkg --audit said: {{ base_dpkg_audit_after.stdout | trim }}
+    success_msg: "Package database is consistent."
+  when: base_assert_package_db_sane | bool
 
 - name: 'Debian : Check whether a reboot is required'
   become: true
@@ -27,7 +123,10 @@
     - base_reboot_if_required | bool
 
 - name: 'Debian : Install baseline utility packages'
+  # Kept AFTER the reboot, as before this change — a pending reboot is usually
+  # a kernel/libc update, and installing on the far side of it is the safer order.
   become: true
+  environment: "{{ base_apt_environment }}"
   ansible.builtin.apt:
     name: "{{ base_utility_packages_debian }}"
     state: present

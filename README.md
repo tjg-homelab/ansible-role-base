@@ -26,6 +26,39 @@ collection. Run them in that order: **base → users → hardening**.
 | `base_utility_packages_debian` | see `defaults/` | Utility packages for Debian/Ubuntu |
 | `base_utility_packages_redhat` | see `defaults/` | Utility packages for RedHat/EL (base-repo only) |
 | `base_manage_epel` | `false` | Install the EPEL repo on RedHat/EL |
+| `base_timezone` | `""` | System timezone, e.g. `Etc/UTC` (Debian/Ubuntu). Empty leaves the host alone. Set it on **fresh** hosts — see below |
+| `base_assert_package_db_sane` | `true` | Fail the play if `dpkg` reports half-configured packages after the package run |
+| `base_apt_environment` | `DEBIAN_FRONTEND=noninteractive`, `DEBIAN_PRIORITY=critical` | Environment applied to every Debian/Ubuntu package operation |
+
+### Fresh hosts and the tzdata trap
+
+On a **freshly imaged** Debian/Ubuntu host, `apt-get dist-upgrade` can die with:
+
+```
+tzdata failed to preconfigure, with exit status 10
+E: Sub-process /usr/bin/dpkg returned an error code (1)
+```
+
+The damage is wider than one package: `tzdata` lands in state `iF` and
+everything queued behind it is left `iU` (unpacked, never configured) — on a
+real occurrence that included `python3`, on the host Ansible was managing.
+
+Note that `ansible.builtin.apt` *already* exports
+`DEBIAN_FRONTEND=noninteractive` for the commands it runs, so "set the frontend"
+is not by itself the fix. This role therefore:
+
+1. audits the package database and runs `dpkg --configure -a` **before**
+   upgrading, healing a host that arrives mid-configure;
+2. sets the timezone when `base_timezone` is non-empty, so `tzdata` has no
+   debconf question to ask at all;
+3. applies `base_apt_environment` to every package operation, which also covers
+   dpkg hook child processes;
+4. **fails loudly** afterwards if the database is still inconsistent, rather
+   than converging another 150 tasks onto a broken host.
+
+`base_timezone` is empty by default on purpose — a fleet is frequently mixed
+(UTC on servers, local time on desktops/SBCs), and a default would silently
+re-timezone hosts on the next converge.
 
 The RedHat utility default is intentionally limited to base-repo packages so the
 role works without EPEL. To pull EPEL-only tools (e.g. `htop`, `glances`), set

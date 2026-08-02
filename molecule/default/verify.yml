@@ -29,3 +29,59 @@
         that:
           - base_reboot_marker.stat.exists
         fail_msg: "The role rebooted (or removed the marker) despite base_reboot_if_required=false"
+
+    # ---- AN-45 ---------------------------------------------------------------
+    # prepare.yml deliberately left a package unpacked-but-unconfigured, the
+    # same dpkg state the tzdata preconfigure failure produced on donkey. The
+    # role must have healed it BEFORE upgrading, and must not have carried on
+    # over a broken package database.
+    - name: Audit the package database
+      ansible.builtin.command: dpkg --audit
+      changed_when: false
+      register: base_verify_audit
+
+    - name: Assert the half-configured package was repaired
+      ansible.builtin.assert:
+        that:
+          - base_verify_audit.stdout | trim | length == 0
+        fail_msg: >-
+          dpkg still reports half-configured packages after the role ran, so the
+          AN-45 repair did not work: {{ base_verify_audit.stdout | trim }}
+        success_msg: "Package database is consistent; the AN-45 repair path worked."
+
+    - name: Query the state of the package prepare.yml left unconfigured
+      ansible.builtin.command: dpkg-query -W -f='${db:Status-Abbrev}' tree
+      changed_when: false
+      register: base_verify_tree_state
+
+    - name: Assert it is now fully installed, not merely unpacked
+      ansible.builtin.assert:
+        that:
+          - base_verify_tree_state.stdout | trim == 'ii'
+        fail_msg: >-
+          Expected 'tree' to be fully configured (ii) after the repair, got
+          '{{ base_verify_tree_state.stdout | trim }}'. 'iU' means the role
+          detected nothing and left the host half-configured.
+
+    # The timezone path is what stops tzdata having a question to ask at all.
+    - name: Read /etc/timezone
+      ansible.builtin.slurp:
+        src: /etc/timezone
+      register: base_verify_timezone
+
+    - name: Stat /etc/localtime
+      ansible.builtin.stat:
+        path: /etc/localtime
+      register: base_verify_localtime
+
+    - name: Assert the configured timezone was applied
+      ansible.builtin.assert:
+        that:
+          - (base_verify_timezone.content | b64decode | trim) == 'Etc/UTC'
+          - base_verify_localtime.stat.islnk
+          - base_verify_localtime.stat.lnk_source == '/usr/share/zoneinfo/Etc/UTC'
+        fail_msg: >-
+          base_timezone did not take effect. /etc/timezone is
+          '{{ base_verify_timezone.content | b64decode | trim }}' and
+          /etc/localtime points at
+          '{{ base_verify_localtime.stat.lnk_source | default("(not a link)") }}'.
