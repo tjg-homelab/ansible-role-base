@@ -58,6 +58,7 @@ base_utility_packages_debian:
   - git
   - vim
   - net-tools
+  - smartmontools
 
 # Baseline utilities for RedHat/EL. Kept to base-repo packages so the role works
 # without EPEL. Add EPEL-only extras (htop, glances, …) via your inventory after
@@ -71,6 +72,7 @@ base_utility_packages_redhat:
   - vim
   - net-tools
   - yum-utils
+  - smartmontools
 
 # Install the EPEL repo on RedHat/EL (via the base-repo `epel-release` package).
 # Off by default to keep the role dependency-free; enable if your utility list

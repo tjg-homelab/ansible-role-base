@@ -14,6 +14,7 @@
           - "'htop' in ansible_facts.packages"
           - "'rsync' in ansible_facts.packages"
           - "'vim' in ansible_facts.packages or 'vim-common' in ansible_facts.packages"
+          - "'smartmontools' in ansible_facts.packages"
         fail_msg: "Expected baseline utility packages were not installed"
 
     # prepare.yml created /var/run/reboot-required and converge disabled the
